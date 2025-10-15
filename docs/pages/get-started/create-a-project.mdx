@@ -1,24 +1,219 @@
----
-title: Create a project
-description: Learn how to create a new Expo project.
-hideTOC: true
----
+import React, { useState, useEffect } from "react";
+import {
+  SafeAreaView,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  StyleSheet,
+  Alert,
+  ScrollView,
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { Terminal } from '~/ui/components/Snippet';
+const DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex"];
 
-System requirements:
+export default function App() {
+  const [clientes, setClientes] = useState([]);
+  const [nome, setNome] = useState("");
+  const [horario, setHorario] = useState("");
+  const [diaSelecionado, setDiaSelecionado] = useState("Seg");
+  const [visitas, setVisitas] = useState({}); // { dia: [{ nome, horario, visitado }] }
 
-- [Node.js (LTS)](https://nodejs.org/en/).
-- macOS, Windows (Powershell and [WSL 2](https://expo.fyi/wsl)), and Linux are supported.
+  useEffect(() => {
+    carregarDados();
+  }, []);
 
-We recommend starting with the default project created by `create-expo-app`. The default project includes example code to help you get started.
+  async function carregarDados() {
+    try {
+      const salvo = await AsyncStorage.getItem("@rotas");
+      if (salvo) setVisitas(JSON.parse(salvo));
+    } catch (e) {
+      console.log(e);
+    }
+  }
 
-To create a new project, run the following command:
+  async function salvarDados(novo) {
+    setVisitas(novo);
+    await AsyncStorage.setItem("@rotas", JSON.stringify(novo));
+  }
 
-<Terminal cmd={['$ npx create-expo-app@latest']} />
+  function adicionarCliente() {
+    if (!nome.trim()) {
+      Alert.alert("Erro", "Digite o nome do cliente.");
+      return;
+    }
 
-> You can choose a different template by adding the [`--template` option](/more/create-expo/#--template).
+    const novaLista = visitas[diaSelecionado]
+      ? [...visitas[diaSelecionado]]
+      : [];
 
-## Next step
+    novaLista.push({ nome, horario, visitado: false });
 
-You have a project. Now it's time to set up your development environment so that you can start developing.
+    const novo = { ...visitas, [diaSelecionado]: novaLista };
+    salvarDados(novo);
+    setNome("");
+    setHorario("");
+  }
+
+  function marcarVisitado(index) {
+    const listaDia = [...(visitas[diaSelecionado] || [])];
+    listaDia[index].visitado = !listaDia[index].visitado;
+    const novo = { ...visitas, [diaSelecionado]: listaDia };
+    salvarDados(novo);
+  }
+
+  function removerCliente(index) {
+    Alert.alert("Remover", "Deseja remover este cliente?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Remover",
+        onPress: () => {
+          const listaDia = [...(visitas[diaSelecionado] || [])];
+          listaDia.splice(index, 1);
+          const novo = { ...visitas, [diaSelecionado]: listaDia };
+          salvarDados(novo);
+        },
+      },
+    ]);
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <Text style={styles.titulo}>📍 Rotas de Visita Diárias</Text>
+
+      {/* Seletor de dia */}
+      <View style={styles.dias}>
+        {DIAS.map((d) => (
+          <TouchableOpacity
+            key={d}
+            onPress={() => setDiaSelecionado(d)}
+            style={[
+              styles.botaoDia,
+              diaSelecionado === d && styles.diaSelecionado,
+            ]}
+          >
+            <Text
+              style={{
+                color: diaSelecionado === d ? "#fff" : "#333",
+                fontWeight: "600",
+              }}
+            >
+              {d}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Formulário */}
+      <View style={styles.form}>
+        <TextInput
+          style={styles.input}
+          placeholder="Nome do cliente"
+          value={nome}
+          onChangeText={setNome}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Horário ideal (ex: 14h)"
+          value={horario}
+          onChangeText={setHorario}
+        />
+        <TouchableOpacity style={styles.botaoAdd} onPress={adicionarCliente}>
+          <Text style={{ color: "#fff", fontWeight: "600" }}>Adicionar</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Lista de clientes */}
+      <ScrollView style={{ flex: 1 }}>
+        {(visitas[diaSelecionado] || []).length === 0 ? (
+          <Text style={{ textAlign: "center", marginTop: 20, color: "#777" }}>
+            Nenhum cliente adicionado para {diaSelecionado}.
+          </Text>
+        ) : (
+          <FlatList
+            data={visitas[diaSelecionado]}
+            keyExtractor={(_, i) => i.toString()}
+            renderItem={({ item, index }) => (
+              <View style={styles.card}>
+                <TouchableOpacity
+                  onPress={() => marcarVisitado(index)}
+                  style={[
+                    styles.status,
+                    { backgroundColor: item.visitado ? "#4caf50" : "#ccc" },
+                  ]}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.nomeCliente,
+                      item.visitado && { textDecorationLine: "line-through" },
+                    ]}
+                  >
+                    {item.nome}
+                  </Text>
+                  <Text style={styles.horario}>
+                    Horário: {item.horario || "—"}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => removerCliente(index)}>
+                  <Text style={styles.remover}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          />
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 20, backgroundColor: "#f2f2f2" },
+  titulo: { fontSize: 22, fontWeight: "bold", marginBottom: 10, textAlign: "center" },
+  dias: { flexDirection: "row", justifyContent: "space-between", marginVertical: 10 },
+  botaoDia: {
+    flex: 1,
+    alignItems: "center",
+    padding: 10,
+    marginHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: "#e0e0e0",
+  },
+  diaSelecionado: { backgroundColor: "#007AFF" },
+  form: { marginBottom: 20 },
+  input: {
+    backgroundColor: "#fff",
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  botaoAdd: {
+    backgroundColor: "#007AFF",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 8,
+  },
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: 12,
+    borderRadius: 10,
+    marginVertical: 5,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  status: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginRight: 10,
+  },
+  nomeCliente: { fontSize: 16, fontWeight: "600" },
+  horario: { fontSize: 14, color: "#555" },
+  remover: { fontSize: 20, color: "red", paddingHorizontal: 10 },
+});
